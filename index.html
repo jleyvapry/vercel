@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TMS | Visor Vertical de Entregas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+        .img-card { transition: all 0.3s ease; }
+        .img-card:hover { transform: translateY(-2px); }
+    </style>
+</head>
+<body x-data="vercelApp()">
+
+    <header class="sticky top-0 z-50 bg-slate-900 text-white p-4 shadow-lg flex justify-between items-center">
+        <div>
+            <h1 class="text-sm font-black uppercase tracking-tighter">Gestor de Archivos Drive</h1>
+            <p class="text-[10px] text-blue-400 font-bold" x-text="activeProject"></p>
+        </div>
+        <button @click="location.reload()" class="text-xs bg-slate-800 px-3 py-1 rounded-full border border-slate-700">Actualizar Lista</button>
+    </header>
+
+    <main class="max-w-2xl mx-auto p-4 pb-24">
+        
+        <div class="mb-6">
+            <input type="text" x-model="search" placeholder="Buscar por Código Modular o IIEE..." 
+                   class="w-full p-4 rounded-2xl border-none shadow-sm focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+        </div>
+
+        <template x-for="item in filteredData" :key="item.id">
+            <div class="bg-white rounded-3xl shadow-sm border border-slate-100 mb-6 overflow-hidden img-card">
+                <div class="p-4 bg-slate-50 border-b flex justify-between items-center">
+                    <div>
+                        <h3 class="font-black text-slate-800 text-sm" x-text="item.IIEE"></h3>
+                        <p class="text-[10px] font-bold text-slate-400 uppercase" x-text="'COD: ' + item.COD_MOD + ' | ' + item.Nivel"></p>
+                    </div>
+                    <span class="bg-blue-100 text-blue-700 text-[9px] font-black px-2 py-1 rounded-full" x-text="item.DISTRITO"></span>
+                </div>
+
+                <div class="p-4 space-y-4">
+                    <template x-for="img in item.images" :key="img.label">
+                        <div class="flex items-center gap-4 bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                            <div class="w-16 h-16 rounded-xl bg-slate-200 overflow-hidden shrink-0 border border-slate-200">
+                                <img :src="img.url" class="w-full h-full object-cover" onerror="this.src='https://placehold.co/100x100?text=Sin+Foto'">
+                            </div>
+                            
+                            <div class="flex-1">
+                                <p class="text-[10px] font-black text-slate-400 uppercase leading-none mb-1" x-text="img.label"></p>
+                                <a :href="img.url" target="_blank" class="text-xs font-bold text-blue-600 truncate block max-w-[150px]">Ver Archivo Original</a>
+                            </div>
+
+                            <div class="shrink-0">
+                                <label class="cursor-pointer flex flex-col items-center justify-center w-12 h-12 bg-white border-2 border-dashed border-slate-300 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition">
+                                    <span class="text-lg">📷</span>
+                                    <input type="file" class="hidden" @change="uploadPhoto($event, item, img.label)">
+                                </label>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </template>
+    </main>
+
+    <div x-show="uploading" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[100] flex items-center justify-center text-white flex-col">
+        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-white mb-4"></div>
+        <p class="font-black uppercase tracking-widest text-xs">Subiendo a Google Drive...</p>
+    </div>
+
+    <script>
+        function vercelApp() {
+            return {
+                masterData: [],
+                search: '',
+                activeProject: 'item15',
+                uploading: false,
+                // REEMPLAZAR CON TUS DATOS
+                config: {
+                    api: 'TU_URL_DE_APPSCRIPT',
+                    token: 'JL_TIC_SECURE_2025_KEY',
+                    email: 'tu@correo.com',
+                    pass: 'tu_pass'
+                },
+
+                async init() {
+                    const url = `${this.config.api}?token=${this.config.token}&email=${this.config.email}&password=${this.config.pass}&projectKey=${this.activeProject}`;
+                    const res = await fetch(url);
+                    const json = await res.json();
+                    if(json.status === 'success') this.masterData = json.data;
+                },
+
+                get filteredData() {
+                    return this.masterData.filter(i => 
+                        i.IIEE.toLowerCase().includes(this.search.toLowerCase()) || 
+                        i.COD_MOD.toString().includes(this.search)
+                    );
+                },
+
+                async uploadPhoto(event, item, campo) {
+                    const file = event.target.files[0];
+                    if (!file) return;
+
+                    this.uploading = true;
+                    const reader = new FileReader();
+                    reader.readAsDataURL(file);
+                    
+                    reader.onload = async () => {
+                        const payload = {
+                            token: this.config.token,
+                            projectKey: this.activeProject,
+                            codMod: item.COD_MOD,
+                            nivel: item.Nivel,
+                            campo: campo,
+                            base64: reader.result
+                        };
+
+                        try {
+                            const res = await fetch(this.config.api, {
+                                method: 'POST',
+                                body: JSON.stringify(payload)
+                            });
+                            const result = await res.json();
+                            if(result.status === 'success') {
+                                alert('Foto actualizada correctamente');
+                                location.reload();
+                            } else {
+                                alert('Error: ' + result.message);
+                            }
+                        } catch (e) {
+                            alert('Error de conexión');
+                        } finally {
+                            this.uploading = false;
+                        }
+                    };
+                }
+            }
+        }
+    </script>
+</body>
+</html>
